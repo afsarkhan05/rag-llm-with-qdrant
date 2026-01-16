@@ -1,0 +1,7 @@
+qdrant-client
+sentence-transformers
+ollama
+PyPDF2
+python-docx
+markdown
+tiktoken

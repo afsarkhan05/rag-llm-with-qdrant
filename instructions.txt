@@ -1,0 +1,21 @@
+1. python3 -m venv .venv
+2. . .venv/bin/activate OR source venv/bin/activate
+3. pip install -r requirements.txt
+4. load local files in ./data folder
+5. docker compose up -d
+6. python index_local_files.py
+
+7 curl -fsSL https://ollama.com/install.sh | sh (Linux install ollama)
+8 ollama --version (check version)
+9 ollama serve (start server)
+10 ollama pull llama3.1:8b (required 8-16gb ram) OR
+ollama pull phi3:mini
+11 ollama list (This will list all local models)
+12 http://localhost:11434 (Check ollama status
+13. python query_rag_result.py (Ask questions about data embedded - use correct model in py file)
+14 ps -ef | grep ollama
+15 kill -9 {ollama pid}
+
+
+
+
