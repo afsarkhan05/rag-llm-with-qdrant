@@ -5,3 +5,10 @@ PyPDF2
 python-docx
 markdown
 tiktoken
+
+#multi modal package installations
+openai-whisper    # For transcribing audio and video
+pillow            # For opening and resizing images (jpg/png)
+opencv-python     # (Optional) Helpful if you want to extract frames from video
+torch             # Core engine for CLIP and Whisper models
+torchvision       # Necessary for image-based model operations

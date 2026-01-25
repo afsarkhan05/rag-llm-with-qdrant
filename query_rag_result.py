@@ -1,64 +1,52 @@
-from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
 import ollama
+from qdrant_client import QdrantClient, models
+from sentence_transformers import SentenceTransformer
 
-COLLECTION = "local_docs"
-
+# Initialize models
+text_model = SentenceTransformer("all-MiniLM-L6-v2")
+clip_model = SentenceTransformer("clip-ViT-B-32")
 qdrant = QdrantClient(host="localhost", port=6333)
-embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 
-def retrieve(query, top_k=5):
-    q_vec = embed_model.encode(query).tolist()
+def retrieve_hybrid(query, collection_name="multimodal_rag", top_k=5):
+    # Encode query for both lanes
+    text_emb = text_model.encode(query).tolist()
+    clip_emb = clip_model.encode(query).tolist()
+
+    # The Hybrid Query
     result = qdrant.query_points(
-        collection_name=COLLECTION,
-        query=q_vec,
-        limit=top_k
+        collection_name=collection_name,
+        prefetch=[
+            # Lane 1: Search the text index
+            models.Prefetch(query=text_emb, using="text-vec", limit=top_k),
+            # Lane 2: Search the CLIP index (can find images with text query!)
+            models.Prefetch(query=clip_emb, using="clip-vec", limit=top_k),
+        ],
+        # Fuse results: points that rank high in BOTH lanes get a boost
+        query=models.FusionQuery(fusion=models.Fusion.RRF),
+        limit=top_k,
+        with_payload=True
     )
     return result.points
 
-def build_prompt(query, hits):
-    context = "\n\n".join(
-        f"Source {i+1}:\n{h.payload['text']}"
-        for i, h in enumerate(hits)
-    )
+def chat_with_phi(query, hits):
+    # Combine text and image metadata for the LLM
+    context = ""
+    for i, h in enumerate(hits):
+        p = h.payload
+        # If it's an image, we use the description; if text, the chunk
+        content = p.get("text") or p.get("description") or "Image Data"
+        context += f"Source {i+1} ({p.get('type')}): {content}\n\n"
 
-    return f"""
-You are a helpful assistant.
-Answer ONLY using the context below.
-If the answer is not present, say "I don't know".
+    prompt = f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"
 
-Context:
-{context}
+    print(f'Prompt: {prompt}')
 
-Question:
-{query}
+    response = ollama.chat(model="phi3:mini", messages=[{"role": "user", "content": prompt}])
+    return response["message"]["content"]
 
-Answer:
-"""
-
+# Example Usage
 if __name__ == "__main__":
-    while True:
-        query = input("\nAsk (or exit): ").strip()
-        if query.lower() == "exit":
-            break
-
-        hits = retrieve(query)
-        print(f'hits: {hits}')
-        if not hits:
-            print("No relevant context found.")
-            continue
-
-        prompt = build_prompt(query, hits)
-
-        #
-        # ✅ response is ALWAYS defined here
-        response = ollama.chat(
-            #model="llama3.1:8b",
-            model="phi3:mini",
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        print("\nAnswer:\n", response["message"]["content"])
-        print("\nSources:")
-        for h in hits:
-            print("-", h.payload["path"])
+    user_q = "How many colors of cat do we have?"
+    relevant_hits = retrieve_hybrid(user_q)
+    answer = chat_with_phi(user_q, relevant_hits)
+    print(answer)
